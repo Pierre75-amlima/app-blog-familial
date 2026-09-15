@@ -32,8 +32,8 @@ void main() async {
     anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
   );
 
-  timeago.setLocaleMessages('fi', timeago.FiMessages());
-  timeago.setLocaleMessages('fi_short', timeago.FiShortMessages());
+  timeago.setLocaleMessages('fr', timeago.FrMessages());
+  timeago.setDefaultLocale('fr');
 
   runApp(const MyApp());
 }
