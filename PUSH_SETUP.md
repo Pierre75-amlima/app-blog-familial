@@ -65,25 +65,45 @@ sert de serveur central :
      *Apple APNs authentication key* → uploader le `.p8` + Key ID + Team ID
    (pour Android, rien à faire : c automatique via google-services.json)
 
-### 2. Supabase
+### 2. Supabase (dashboard, pas besoin de CLI)
 
-1. Exécuter la migration **`lib/migrations/002_push_notifications.sql`**
-   (Dashboard → SQL Editor, ou `supabase db push`).
-2. Générer un **service account** Firebase :
-   Paramètres du projet → Service accounts → *Générer une nouvelle clé
-   privée* → JSON téléchargé.
-3. Renseigner les secrets (Dashboard → Project Settings → Edge Functions →
-   **Secrets**, ou CLI après `supabase link`) :
-   ```bash
-   supabase secrets set FCM_PROJECT_ID="votre-firebase-project-id"
-   supabase secrets set FCM_SERVICE_ACCOUNT="$(cat service-account.json)"
-   ```
-4. Déployer la fonction :
-   ```bash
-   supabase functions deploy push
-   ```
-   ou via le Dashboard : **Edge Functions** → *New function* → nom `push` →
-   coller le code de `.supabase/functions/push/index.ts` → *Deploy*.
+Ouvre [supabase.com/dashboard](https://supabase.com/dashboard) et sélectionne
+ton projet.
+
+**2.1 — Créer les tables**
+1. Menu à gauche → **SQL Editor** → **New query**
+2. Copie-colle tout le contenu de `lib/migrations/002_push_notifications.sql`
+3. **Run** → « Success »
+4. ✅ Vérif : dans **Table Editor**, les tables `notifications` et
+   `push_subscriptions` existent.
+
+**2.2 — Renseigner les secrets** (restent côté serveur, jamais vus par l'app)
+1. Menu à gauche → **Project Settings** (engrenage) → **Edge Functions** →
+   section **Secrets**
+2. Ajoute deux secrets :
+
+   | Nom | Valeur |
+   |---|---|
+   | `FCM_PROJECT_ID` | Le Project ID Firebase (Firebase → Project settings → *Your apps* → « Project ID ») |
+   | `FCM_SERVICE_ACCOUNT` | Le contenu complet du JSON du service account (Firebase → Project settings → Service accounts → *Generate new private key* → le fichier téléchargé, collé entier) |
+
+**2.3 — Déployer la fonction**
+1. Menu à gauche → **Edge Functions** → **New Function**
+2. Slug : `push` (**exactement** ce nom — c'est lui que l'app appelle)
+3. Colle le contenu de `.supabase/functions/push/index.ts`
+4. **Deploy** → la fonction doit apparaître « Healthy »
+5. ✅ Vérif : `push` → *View logs*
+
+<details>
+<summary>Alternative CLI (si tu as la Supabase CLI)</summary>
+
+```bash
+supabase db push            # ou exécuter le SQL dans le SQL Editor
+supabase secrets set FCM_PROJECT_ID="votre-firebase-project-id"
+supabase secrets set FCM_SERVICE_ACCOUNT="$(cat service-account.json)"
+supabase functions deploy push
+```
+</details>
 
 ### 3. App
 
