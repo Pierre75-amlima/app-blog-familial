@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:familly_blog/models/message_model.dart';
@@ -67,6 +68,34 @@ class _AddPostScreenState extends State<AddPostScreen> {
     } catch (e) {
       print('Erreur upload profil : $e');
       return widget.currentUser.profil;
+    }
+  }
+
+  /// Notifie le reste de la famille via la Supabase Edge Function "push".
+  /// Ne lève jamais d'exception (une publication ne doit pas échouer
+  /// à cause d'une notification).
+  Future<void> _notifyFamily(MessageModel post) async {
+    try {
+      final author = widget.currentUser;
+      final users = await _supabase
+          .from('users')
+          .select('id')
+          .neq('id', author.id);
+      final ids = (users as List)
+          .map((u) => u['id'] as String)
+          .whereType<String>()
+          .toList();
+      if (ids.isEmpty) return;
+
+      await _supabase.functions.invoke('push', body: {
+        'title': 'Nouvelle publication',
+        'body': '${author.fullname} a partagé un nouveau message',
+        'type': 'post',
+        'ref_id': post.id,
+        'user_ids': ids,
+      });
+    } catch (e) {
+      print('Erreur push : $e');
     }
   }
 
@@ -171,6 +200,9 @@ class _AddPostScreenState extends State<AddPostScreen> {
                     await _supabase
                         .from('messages')
                         .insert(newMessage.toJson());
+
+                    // ─── Notification push au reste de la famille ───
+                    unawaited(_notifyFamily(newMessage));
 
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(

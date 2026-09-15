@@ -7,6 +7,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:familly_blog/screens/splash_screen.dart';
+import 'package:familly_blog/services/push_service.dart';
 
 const String _isLoggedInKey = 'is_logged_in';
 
@@ -34,6 +35,9 @@ void main() async {
 
   timeago.setLocaleMessages('fr', timeago.FrMessages());
   timeago.setDefaultLocale('fr');
+
+  // Notifications push (FCM via Supabase Edge Function)
+  await PushService.instance.init();
 
   runApp(const MyApp());
 }

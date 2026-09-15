@@ -11,6 +11,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:familly_blog/screens/chat_screen.dart';
 import 'package:familly_blog/screens/contacts_screen.dart';
 import 'package:familly_blog/screens/events_screen.dart';
+import 'package:familly_blog/services/push_service.dart';
+import 'package:timeago/timeago.dart' as timeago;
 
 final _supabase = Supabase.instance.client;
 const String _isLoggedInKey = 'is_logged_in';
@@ -34,12 +36,14 @@ class _HomePageState extends State<HomePage> {
   var _isLoading = false;
   List<MessageModel> _message = [];
   List<UserModel> _members = [];
+  int _unreadCount = 0;
 
   @override
   void initState() {
     super.initState();
     _currentUser = widget.currentUser;
     _getMessage();
+    _loadUnreadCount();
   }
 
   Future<void> _getMessage() async {
@@ -69,12 +73,40 @@ class _HomePageState extends State<HomePage> {
           _members = membersList;
         });
       }
+      _loadUnreadCount();
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
         print('Une erreur est survenue : $e');
       }
     }
+  }
+
+  Future<void> _loadUnreadCount() async {
+    try {
+      final res = await _supabase
+          .from('notifications')
+          .select('id', count: CountOption.exact, head: true)
+          .is_('read_at', null);
+      if (mounted) {
+        setState(() => _unreadCount = res.count ?? 0);
+      }
+    } catch (_) {
+      // Table "notifications" pas encore créée ? On ne bloque pas l'app.
+    }
+  }
+
+  Future<void> _showNotificationsSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      builder: (sheetContext) => _NotificationsSheet(
+        supabase: _supabase,
+        currentUser: _currentUser,
+        onClosed: _loadUnreadCount,
+      ),
+    );
   }
 
   @override
@@ -105,31 +137,35 @@ class _HomePageState extends State<HomePage> {
             children: [
               IconButton(
                 icon: const Icon(
-                  Icons.notification_add_outlined,
+                  Icons.notifications_outlined,
                   color: Colors.black,
                 ),
-                onPressed: () {},
+                onPressed: _showNotificationsSheet,
               ),
-              Positioned(
-                right: 10,
-                top: 10,
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: const BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
-                  ),
-                  constraints: const BoxConstraints(
-                    minHeight: 16,
-                    minWidth: 16,
-                  ),
-                  child: const Text(
-                    '3',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white, fontSize: 10),
+              if (_unreadCount > 0)
+                Positioned(
+                  right: 10,
+                  top: 10,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints: const BoxConstraints(
+                      minHeight: 16,
+                      minWidth: 16,
+                    ),
+                    child: Text(
+                      _unreadCount > 99 ? '99+' : '$_unreadCount',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                      ),
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           const SizedBox(width: 8),
@@ -249,6 +285,7 @@ class _HomePageState extends State<HomePage> {
                   Navigator.of(context).pop();
                   await _saveSessionState(false);
                   await _supabase.auth.signOut();
+                  PushService.instance.unsubscribe();
 
                   if (!context.mounted) return;
                   Navigator.pushAndRemoveUntil(
@@ -368,6 +405,167 @@ class _HomePageState extends State<HomePage> {
             icon: Icon(Icons.message_outlined),
             label: "Messages",
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── FEUILLE DE NOTIFICATIONS (badge de la cloche) ────────────────────────
+
+class _NotificationsSheet extends StatefulWidget {
+  const _NotificationsSheet({
+    required this.supabase,
+    required this.currentUser,
+    required this.onClosed,
+  });
+
+  final SupabaseClient supabase;
+  final UserModel currentUser;
+  final Future<void> Function() onClosed;
+
+  @override
+  State<_NotificationsSheet> createState() => _NotificationsSheetState();
+}
+
+class _NotificationsSheetState extends State<_NotificationsSheet> {
+  List<Map<String, dynamic>> _items = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final rows = await widget.supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_id', widget.currentUser.id)
+          .order('created_at', ascending: false)
+          .limit(20);
+      if (mounted) {
+        setState(() {
+          _items = rows;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _markRead(String id) async {
+    try {
+      await widget.supabase
+          .from('notifications')
+          .update({'read_at': DateTime.now().toUtc().toIso8601String()})
+          .eq('id', id);
+      await _load();
+      await widget.onClosed();
+    } catch (_) {}
+  }
+
+  Future<void> _markAllRead() async {
+    try {
+      await widget.supabase
+          .from('notifications')
+          .update({'read_at': DateTime.now().toUtc().toIso8601String()})
+          .eq('user_id', widget.currentUser.id)
+          .is_('read_at', null);
+      await _load();
+      await widget.onClosed();
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Notifications',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _markAllRead,
+                  child: const Text('Tout marquer lu'),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          _loading
+              ? const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: CircularProgressIndicator(),
+                )
+              : _items.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Text('Aucune notification'),
+                    )
+                  : Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: _items.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final n = _items[index];
+                          final isRead = n['read_at'] != null;
+                          final body = (n['body'] as String?) ?? '';
+                          return ListTile(
+                            leading: isRead
+                                ? null
+                                : Container(
+                                    width: 10,
+                                    height: 10,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.red,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                            title: Text(
+                              (n['title'] as String?) ?? '',
+                              style: TextStyle(
+                                fontWeight: isRead
+                                    ? FontWeight.w400
+                                    : FontWeight.bold,
+                              ),
+                            ),
+                            subtitle: body.isNotEmpty
+                                ? Text(
+                                    body,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  )
+                                : null,
+                            trailing: Text(
+                              timeago.format(
+                                DateTime.parse(n['created_at'] as String),
+                              ),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            onTap: () => _markRead(n['id'] as String),
+                          );
+                        },
+                      ),
+                    ),
         ],
       ),
     );
