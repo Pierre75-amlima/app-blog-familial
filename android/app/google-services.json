@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "186120937530",
+    "project_id": "family-blog-59f6f",
+    "storage_bucket": "family-blog-59f6f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:186120937530:android:6237f3740cb26fd3289503",
+        "android_client_info": {
+          "package_name": "com.example.familly_blog"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBEkmmDacqdEK-prIC03qAiogTdy1uX1q4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

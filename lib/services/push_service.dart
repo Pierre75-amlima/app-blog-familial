@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -23,7 +21,6 @@ class PushService {
   final SupabaseClient _supabase = Supabase.instance.client;
 
   bool _initialized = false;
-  StreamSubscription<AuthStateChangeEvent>? _authSub;
 
   /// Dernière notification tapée (app ouverte ou réouverte depuis le centre).
   RemoteMessage? lastOpenedMessage;
@@ -55,10 +52,10 @@ class PushService {
 
         // Si l'utilisateur se connecte alors que l'app est déjà ouverte,
         // on enregistre le token au nom du nouveau user.
-        _authSub = _supabase.auth.onAuthStateChange.listen((event) async {
-          if (event is AuthSignedInEvent) {
-            await _registerToken(await FirebaseMessaging.instance.getToken());
-          }
+        _supabase.auth.onAuthStateChange.listen((_) async {
+          final user = _supabase.auth.currentUser;
+          if (user == null) return;
+          await _registerToken(await FirebaseMessaging.instance.getToken());
         });
       } catch (e) {
         debugPrint('Push init error: $e');
@@ -68,7 +65,7 @@ class PushService {
 
   Future<void> _initLocalNotifications() async {
     await _local.initialize(
-      initializationSettings: const InitializationSettings(
+      settings: const InitializationSettings(
         android: AndroidInitializationSettings(_androidIcon),
         iOS: DarwinInitializationSettings(
           requestAlertPermission: false,
@@ -131,10 +128,10 @@ class PushService {
   Future<void> _showForeground(RemoteMessage message) async {
     try {
       await _local.show(
-        DateTime.now().microsecondsSinceEpoch,
-        message.notification?.title ?? 'Family Blog',
-        message.notification?.body,
-        NotificationDetails(
+        id: DateTime.now().microsecondsSinceEpoch,
+        title: message.notification?.title ?? 'Family Blog',
+        body: message.notification?.body,
+        notificationDetails: NotificationDetails(
           android: AndroidNotificationDetails(
             _channelId,
             'Family Blog',

@@ -84,12 +84,15 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _loadUnreadCount() async {
     try {
-      final res = await _supabase
+      final rows = await _supabase
           .from('notifications')
-          .select('id', count: CountOption.exact, head: true)
-          .is_('read_at', null);
+          .select('id, read_at')
+          .eq('user_id', _currentUser.id)
+          .order('created_at', ascending: false)
+          .limit(200);
       if (mounted) {
-        setState(() => _unreadCount = res.count ?? 0);
+        setState(() =>
+            _unreadCount = rows.where((r) => r['read_at'] == null).length);
       }
     } catch (_) {
       // Table "notifications" pas encore créée ? On ne bloque pas l'app.
@@ -473,8 +476,7 @@ class _NotificationsSheetState extends State<_NotificationsSheet> {
       await widget.supabase
           .from('notifications')
           .update({'read_at': DateTime.now().toUtc().toIso8601String()})
-          .eq('user_id', widget.currentUser.id)
-          .is_('read_at', null);
+          .eq('user_id', widget.currentUser.id);
       await _load();
       await widget.onClosed();
     } catch (_) {}
@@ -521,7 +523,7 @@ class _NotificationsSheetState extends State<_NotificationsSheet> {
                       child: ListView.separated(
                         shrinkWrap: true,
                         itemCount: _items.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        separatorBuilder: (_, _) => const Divider(height: 1),
                         itemBuilder: (context, index) {
                           final n = _items[index];
                           final isRead = n['read_at'] != null;
